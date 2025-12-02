@@ -16,5 +16,9 @@ if __name__ == "__main__":
     # Create a new client
     app = Client(root, serverAddr, serverPort, rtpPort, fileName)
     app.master.title("RTPClient")
+
+    # ---------------------------------------------------------------------------#
+    #Ngăn việc video HD tự resize ngoài ý muốn
     root.resizable(False, False)
     root.mainloop()
+    # ---------------------------------------------------------------------------#
