@@ -21,7 +21,6 @@ class Client:
     PLAY = 1
     PAUSE = 2
     TEARDOWN = 3
-    SWITCH = 4
 
     # Initiation..
     def __init__(self, master, serveraddr, serverport, rtpport, filename):
@@ -33,8 +32,11 @@ class Client:
         self.serverPort = int(serverport)
         self.rtpPort = int(rtpport)
 
+        #---------------------------------------------------------------------------#
+            #Các biến cần thêm để xử lý video HD
         self.DISPLAY_WIDTH = 480
         self.DISPLAY_HEIGHT = 360
+        #Để video HD display chính xác res củ thì cần ép res của video HD lại
         self.fileNameSD = filename  # Lưu tên file SD gốc
         # Tự động tạo tên file HD (giả định quy tắc đặt tên)
         self.fileNameHD = filename.replace('.mjpeg', '_hd.mjpeg').replace('.Mjpeg', '_hd.Mjpeg')
@@ -43,6 +45,8 @@ class Client:
         self.isSwitching = False
         self.reassembly_buffer = b''
         self.rtspRunning = threading.Event()
+        self.autoPlayAfterSwitch = False #Khi video SD đang pause thì khi switch vẫn sẽ pause
+        #---------------------------------------------------------------------------#
 
         self.rtspSeq = 0
         self.sessionId = 0
@@ -60,12 +64,14 @@ class Client:
         self.setup["command"] = self.setupMovie
         self.setup.grid(row=1, column=0, padx=2, pady=2)
 
+        # ---------------------------------------------------------------------------#
         #Switch quality button
         self.switch = Button(self.master, width=20, padx=3, pady=3)
         self.switch["text"] = "Switch to HD"
         self.switch["command"] = self.switchQuality
         self.switch.grid(row=3, column=1, padx=2, pady=2)  # Đặt ở vị trí hợp lý
         self.switch["state"] = "disabled"
+        # ---------------------------------------------------------------------------#
 
         # Create Play button
         self.start = Button(self.master, width=20, padx=3, pady=3)
@@ -98,11 +104,13 @@ class Client:
             print("Đã khởi động luồng recvRtspReply cho phiên mới.")
             self.sendRtspRequest(self.SETUP)
 
+    #Exit client mạnh hơn
     def exitClient(self):
         """Handler for Teardown button and window close."""
         self.cleanup()  # Gọi hàm dọn dẹp
         self.master.destroy()  # Đóng cửa sổ
 
+    # ---------------------------------------------------------------------------#
     # Tạo hàm dọn dẹp mới
     def cleanup(self):
         """Stops threads and closes sockets cleanly."""
@@ -160,6 +168,10 @@ class Client:
         else:
             print(">>> State is NOT PLAYING. Ignoring PAUSE request.")
 
+    # ---------------------------------------------------------------------------#
+
+    # ---------------------------------------------------------------------------#
+    #Thiết lập PLAY cho SD và HD
     def playMovie(self):
         """Play button handler."""
         if self.state == self.READY:
@@ -176,6 +188,7 @@ class Client:
 
             self.sendRtspRequest(self.PLAY)
 
+    # ---------------------------------------------------------------------------#
     def listenRtp(self):
         """Luồng nhận cho video SD."""
         while not self.playEvent.is_set():
@@ -202,12 +215,13 @@ class Client:
 
         return cachename
 
+    # ---------------------------------------------------------------------------#
+    #Sửa để tránh việc video hd tự bị resize
     def updateMovie(self, imageFile):
         """Update the image file as video frame in the GUI."""
         try:
             # Mở ảnh từ file
             image = Image.open(imageFile)
-            # Co ảnh về kích thước hiển thị chuẩn với thuật toán chất lượng cao
             resized_image = image.resize((self.DISPLAY_WIDTH, self.DISPLAY_HEIGHT), Image.Resampling.LANCZOS)
 
             # Chuyển thành đối tượng có thể hiển thị
@@ -219,6 +233,7 @@ class Client:
         except Exception as e:
             print(f"Lỗi khi cập nhật frame SD: {e}")
 
+    # ---------------------------------------------------------------------------#
     def connectToServer(self):
         """Connect to the Server. Start a new RTSP/TCP session."""
         print(">>> ĐANG CỐ KẾT NỐI TỚI SERVER...")
@@ -229,10 +244,6 @@ class Client:
         except Exception as e:
             tkMessageBox.showwarning('Connection Failed', f'Connection to \'{self.serverAddr}\' failed: {e}')
             self.rtspSocket = None
-    def switchQuality(self):
-        """Xử lý việc nhấn nút chuyển đổi chất lượng."""
-        if self.state == self.PLAYING:
-            self.sendRtspRequest(self.SWITCH)
 
     def sendRtspRequest(self, requestCode):
         """Send RTSP request to the server."""
@@ -318,18 +329,31 @@ class Client:
             if self.sessionId == session:
                 if int(lines[0].split(' ')[1]) == 200:
                     if self.requestSent == self.SETUP:
-                        # -------------
-                        # TO COMPLETE
-                        # -------------
-                        # Update RTSP state.
                         self.state = self.READY
-
-                        # Open RTP port.
                         self.openRtpPort()
+
+                        print("SETUP thành công. Client đang ở trạng thái READY.")
+                    # ---------------------------------------------------------------------------#
+                        # --- LOGIC KHÔI PHỤC TRẠNG THÁI MỚI ---
                         if self.isSwitching:
-                            self.isSwitching = False  # Reset cờ
-                            print("Tự động PLAY sau khi chuyển đổi chất lượng thành công.")
-                            self.playMovie()
+                            self.isSwitching = False  # Reset cờ switch
+
+                            if self.autoPlayAfterSwitch:
+                                # Nếu trước đó đang PLAYING, tự động PLAY lại
+                                print("Khôi phục trạng thái: Tự động PLAY.")
+                                self.playMovie()
+                            else:
+                                # Nếu trước đó đang PAUSED, chỉ cần cập nhật UI
+                                print("Khôi phục trạng thái: Giữ nguyên PAUSED.")
+                                self.start["state"] = "normal"
+                                self.pause["state"] = "disabled"
+                                self.switch["state"] = "disabled"
+
+                        # Cập nhật UI cho lần SETUP đầu tiên (không phải switch)
+                        else:
+                            self.start["state"] = "normal"
+                            self.pause["state"] = "disabled"
+                            self.switch["state"] = "disabled"
                     elif self.requestSent == self.PLAY:
                         self.state = self.PLAYING
                         self.start["state"] = "disabled"
@@ -339,12 +363,13 @@ class Client:
                         self.state = self.READY
                         self.start["state"] = "normal"
                         self.pause["state"] = "disabled"
-                        self.switch["state"] = "disabled"
+                        self.switch["state"] = "normal"
                         if hasattr(self, 'playEvent'):
                             self.playEvent.set()
                     elif self.requestSent == self.TEARDOWN:
                         self.state = self.INIT
                         self.rtspRunning.clear()
+                    # ---------------------------------------------------------------------------#
 
     def openRtpPort(self):
         """Open RTP socket binded to a specified port."""
@@ -364,16 +389,24 @@ class Client:
         except:
             tkMessageBox.showwarning('Unable to Bind', 'Unable to bind PORT=%d' % self.rtpPort)
 
-
+    # ---------------------------------------------------------------------------#
+    #Hàm để xử lý việc chuyển chất lượng
     def switchQuality(self):
-        """Dừng phiên hiện tại, thay đổi tên file video, và bắt đầu một phiên mới."""
-        if self.state != self.PLAYING:
+        """Dừng phiên hiện tại, ... ghi nhớ trạng thái PLAYING/PAUSED."""
+        if self.state != self.PLAYING and self.state != self.READY:
+            print("Chỉ có thể chuyển chất lượng khi video đang phát hoặc tạm dừng.")
             return
 
         print("--- BẮT ĐẦU QUÁ TRÌNH CHUYỂN ĐỔI CHẤT LƯỢNG ---")
+
+        # Ghi nhớ trạng thái hiện tại
+        was_playing = (self.state == self.PLAYING)
+
+        # Dọn dẹp hoàn toàn phiên cũ
         self.cleanup()
         time.sleep(0.1)
 
+        # Thay đổi chất lượng và tên file
         if self.currentQuality == 'SD':
             self.currentQuality = 'HD'
             self.fileName = self.fileNameHD
@@ -383,16 +416,21 @@ class Client:
             self.fileName = self.fileNameSD
             self.switch["text"] = "Switch to HD"
 
+        # Reset các biến cho phiên mới
         self.rtspSeq = 0
         self.sessionId = 0
         self.requestSent = -1
         self.frameNbr = 0
         self.isSwitching = True
+        self.autoPlayAfterSwitch = was_playing  # Đặt cờ tự động play
 
+        # Bắt đầu lại từ đầu
         print("Bắt đầu lại phiên mới...")
         self.connectToServer()
         if self.rtspSocket:
             self.setupMovie()
+
+    # ---------------------------------------------------------------------------#
     def handler(self):
         """Handler on explicitly closing the GUI window."""
         self.pauseMovie() # Tạm dừng để người dùng suy nghĩ
@@ -402,6 +440,9 @@ class Client:
              # Chú ý: playMovie bây giờ sẽ tạo lại luồng
             self.playMovie()
 
+    # ---------------------------------------------------------------------------#
+    #Các hàm để xử lý HD
+    #Phải chạy từ RAM vì phần cứng xử lý không kịp
     def listenRtpHD(self):
         """Luồng nhận cho video HD, có tái lắp ráp frame."""
         while not self.playEvent.is_set():
@@ -449,3 +490,4 @@ class Client:
             self.label.image = photo
         except Exception as e:
             print(f"Không thể hiển thị frame HD (có thể bị lỗi): {e}")
+    # ---------------------------------------------------------------------------#
