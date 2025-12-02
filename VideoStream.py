@@ -22,7 +22,8 @@ class VideoStream:
 		"""Get frame number."""
 		return self.frameNum
 
-
+#---------------------------------------------------------------------------#
+#Tạo class riêng để chạy video HD tránh xung đột với SD
 class VideoStreamHD:
     def __init__(self, filename):
         self.filename = filename
