@@ -40,6 +40,8 @@ class ServerWorker:
                 print("Data received:\n" + data.decode("utf-8"))
                 self.processRtspRequest(data.decode("utf-8"))
 
+    # ---------------------------------------------------------------------------#
+    #Thêm quá trình xử lý HD
     def processRtspRequest(self, data):
         """Process RTSP request sent from the client."""
         # Get the request type
@@ -140,10 +142,12 @@ class ServerWorker:
             if 'rtpSocket' in self.clientInfo:
                 self.clientInfo['rtpSocket'].close()
 
+    # ---------------------------------------------------------------------------#
+
     def sendRtp(self):
         """Send RTP packets over UDP."""
         while True:
-            self.clientInfo['event'].wait(0.0167)
+            self.clientInfo['event'].wait(0.04)
 
             # Stop sending if request is PAUSE or TEARDOWN
             if self.clientInfo['event'].isSet():
@@ -197,6 +201,9 @@ class ServerWorker:
         elif code == self.CON_ERR_500:
             print("500 CONNECTION ERROR")
 
+    # ---------------------------------------------------------------------------#
+    #Các hàm để xử lý video HD
+        #1. SendRtp nhưng dùng riêng cho video hd
     def sendRtpHD(self):
         """Send RTP packets over UDP, with fragmentation for large frames."""
         MAX_PAYLOAD_SIZE = 1400  # Kích thước an toàn
@@ -247,3 +254,4 @@ class ServerWorker:
         rtpPacket = RtpPacket()
         rtpPacket.encode(version, padding, extension, cc, seqnum, marker, pt, ssrc, payload)
         return rtpPacket.getPacket()
+    # ---------------------------------------------------------------------------#
